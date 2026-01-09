@@ -193,8 +193,7 @@ class WebAutomation:
         page.set_input_files(import_input_selector, self.import_file)
 
         time.sleep(2)
-        export_file()
-        input("Press Enter to continue...")
+        export_file(page)
         # 点击“基础工商信息导出”的父级 button
 
         return
