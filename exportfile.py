@@ -362,6 +362,8 @@ def external_investment_export_flow(page):
 
 
 def export_file(page):
+    start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    print(f"开始时间 {start_str}")
     # Step 1: 等待 batch/search/company/state 直到 matchState==2.
     wait_for_state_done(page)
     # (optional buffer) ensure server-side完成后再继续
@@ -372,4 +374,8 @@ def export_file(page):
     # shareholder_export_flow(page)
     # 对外投资导出流程
     # external_investment_export_flow(page)
+    # 导航至报告页面
+    report_url = "https://www.tianyancha.com/usercenter/report"
+    page.goto(report_url)
+    print(f"已跳转到报告页面 {report_url}")
     input()
