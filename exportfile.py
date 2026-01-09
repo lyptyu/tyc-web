@@ -462,6 +462,114 @@ def select_report(page, start_str):
     def click_next_page_icon():
         return click_first_visible(page.locator("i.tic.tic-laydate-next-m"))
 
+    def click_prev_page_icon():
+        selectors = [
+            "i.tic.tic-laydate-prev-m",
+            "i.tic.tic-laydate-prev",
+            "i.tic.tic-laydate-pre-m",
+            "i.tic.tic-laydate-pre",
+        ]
+        for sel in selectors:
+            if click_first_visible(page.locator(sel)):
+                return True
+        return False
+
+    def click_page_num(page_num):
+        xpath = (
+            "//div[contains(@class,'pagination-wrap')]"
+            "//div[contains(@class,'pageWrap')]"
+            f"//div[contains(@class,'num') and normalize-space(text())='{page_num}']"
+        )
+        loc = page.locator(xpath)
+        if click_first_visible(loc):
+            return True
+
+        loc = page.locator("div.pagination-wrap div.pageWrap div.num").filter(has_text=str(page_num))
+        return click_first_visible(loc)
+
+    def goto_page(target_page_num, current_page_num, timeout_sec=30):
+        if target_page_num == current_page_num:
+            return current_page_num, True, None
+
+        ok = click_page_num(target_page_num)
+        if ok:
+            data = wait_report_list(expected_page_num=target_page_num, timeout_sec=timeout_sec)
+            if not data:
+                time.sleep(0.5)
+                data = wait_report_list(expected_page_num=target_page_num, timeout_sec=timeout_sec)
+            if not data:
+                return current_page_num, False, None
+            return target_page_num, True, data
+
+        if target_page_num > current_page_num:
+            data = None
+            while current_page_num < target_page_num:
+                ok = click_next_page_icon()
+                if not ok:
+                    return current_page_num, False, None
+                data = wait_report_list(expected_page_num=current_page_num + 1, timeout_sec=timeout_sec)
+                if not data:
+                    return current_page_num, False, None
+                current_page_num += 1
+            return current_page_num, True, data
+
+        if target_page_num < current_page_num:
+            data = None
+            while current_page_num > target_page_num:
+                ok = click_prev_page_icon()
+                if not ok:
+                    return current_page_num, False, None
+                data = wait_report_list(expected_page_num=current_page_num - 1, timeout_sec=timeout_sec)
+                if not data:
+                    return current_page_num, False, None
+                current_page_num -= 1
+            return current_page_num, True, data
+
+        return current_page_num, False, None
+
+    def page_all_ready(data):
+        payload = data.get("data", {})
+        items = payload.get("items") or []
+        if not items:
+            return True
+        for item in items:
+            status = safe_int(item.get("reportStatus"))
+            if status != 2:
+                return False
+        return True
+
+    def count_unready(data):
+        payload = data.get("data", {})
+        items = payload.get("items") or []
+        unready = 0
+        for item in items:
+            status = safe_int(item.get("reportStatus"))
+            if status != 2:
+                unready += 1
+        return unready
+
+    def wait_until_page_ready(page_num, initial_data=None, timeout_sec=600):
+        if initial_data and page_all_ready(initial_data):
+            return True
+
+        if initial_data:
+            remaining = count_unready(initial_data)
+            if remaining > 0:
+                print(f"第{page_num}页还剩{remaining}个文档未生成完毕，接口轮询中，请稍后")
+
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            remaining = max(1, int(deadline - time.time()))
+            data = wait_report_list(expected_page_num=page_num, timeout_sec=min(30, remaining))
+            if not data:
+                continue
+            if page_all_ready(data):
+                return True
+            remaining = count_unready(data)
+            if remaining > 0:
+                print(f"第{page_num}页还剩{remaining}个文档未生成完毕，接口轮询中，请稍后")
+        return False
+
     start_ms = to_ms(start_str)
     if start_ms is None:
         print(f"无法解析开始时间 start_str: {start_str}")
@@ -472,15 +580,37 @@ def select_report(page, start_str):
         print("未捕获到报告列表接口数据。")
         return False
 
+    initial_page_num = safe_int(data.get("data", {}).get("pageNum")) or 1
+    if initial_page_num != 1:
+        current_page_num = initial_page_num
+        current_page_num, ok, data2 = goto_page(1, current_page_num)
+        if not ok:
+            print("初始化跳转第一页失败。")
+            return False
+        if data2:
+            data = data2
+
+    page_list_data = {}
+    pending_pages = set()
+    current_page_num = None
+
     max_pages = 200
+    selection_done = False
     for _ in range(max_pages):
         payload = data.get("data", {})
         items = payload.get("items") or []
         if not items:
             print("报告列表为空。")
-            return True
+            selection_done = True
+            break
 
         page_num = safe_int(payload.get("pageNum")) or 1
+        current_page_num = page_num
+        page_list_data[page_num] = data
+
+        if any(safe_int(item.get("reportStatus")) == 1 for item in items):
+            pending_pages.add(page_num)
+
         page_size = safe_int(payload.get("pageSize")) or max(len(items), 1)
         total = safe_int(payload.get("total")) or 0
 
@@ -502,14 +632,16 @@ def select_report(page, start_str):
                 else:
                     break
             select_first_n_rows(select_count)
-            return True
+            selection_done = True
+            break
 
         select_all_rows_on_page()
 
         has_next = (page_num * page_size) < total
         if not has_next:
             print("已到最后一页。")
-            return True
+            selection_done = True
+            break
 
         ok = click_next_page_icon()
         if not ok:
@@ -522,8 +654,39 @@ def select_report(page, start_str):
             return False
         time.sleep(0.5)
 
-    print("翻页次数超出上限，停止勾选。")
-    return False
+    if not selection_done:
+        print("翻页次数超出上限，停止勾选。")
+        return False
+
+    if not pending_pages:
+        print("全部文档生成成功")
+        return True
+
+    if current_page_num is None:
+        current_page_num = 1
+
+    current_page_num, ok, data = goto_page(1, current_page_num)
+    if not ok:
+        print("跳转第一页失败。")
+        return False
+    if data:
+        page_list_data[1] = data
+
+    for p in sorted(pending_pages):
+        current_page_num, ok, data = goto_page(p, current_page_num)
+        if not ok:
+            print(f"跳转到第 {p} 页失败。")
+            return False
+        if data:
+            page_list_data[p] = data
+
+        ok_ready = wait_until_page_ready(p, initial_data=data or page_list_data.get(p))
+        if not ok_ready:
+            print(f"等待第 {p} 页 reportStatus 全部为 2 超时。")
+            return False
+
+    print("全部文档生成成功")
+    return True
 
 
 def export_file(page):
