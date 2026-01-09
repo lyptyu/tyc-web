@@ -361,6 +361,171 @@ def external_investment_export_flow(page):
         )
 
 
+def select_report(page, start_str):
+    target = "cloud-c-report/myReport/list"
+
+    def to_ms(datetime_str):
+        try:
+            tm = time.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+            return int(time.mktime(tm) * 1000)
+        except Exception:
+            return None
+
+    def safe_int(value):
+        try:
+            return int(value)
+        except Exception:
+            return None
+
+    def wait_report_list(expected_page_num=None, timeout_sec=30):
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            remaining_ms = max(1, int((deadline - time.time()) * 1000))
+            try:
+                resp = page.context.wait_for_event("response", timeout=remaining_ms)
+            except TimeoutError:
+                continue
+
+            if target not in resp.url:
+                continue
+
+            try:
+                data = json.loads(resp.text())
+            except Exception:
+                continue
+
+            page_num = data.get("data", {}).get("pageNum")
+            if expected_page_num is not None and page_num != expected_page_num:
+                continue
+            return data
+        return None
+
+    def click_row_checkbox(row):
+        candidates = [
+            row.locator("td").first.locator("div div svg"),
+            row.locator("td").first.locator("svg"),
+        ]
+        for cand in candidates:
+            try:
+                for idx in range(cand.count()):
+                    el = cand.nth(idx)
+                    if el.is_visible():
+                        el.click()
+                        return True
+            except Exception:
+                continue
+        return False
+
+    def click_first_visible(locator):
+        try:
+            for idx in range(locator.count()):
+                el = locator.nth(idx)
+                if el.is_visible():
+                    el.click()
+                    return True
+        except Exception:
+            return False
+        return False
+
+    def select_first_n_rows(n):
+        if n <= 0:
+            print("无需勾选任何行。")
+            return
+        rows = page.locator("tbody tr")
+        try:
+            rows.first.wait_for(state="visible", timeout=15000)
+        except TimeoutError:
+            pass
+
+        row_count = rows.count()
+        max_n = min(n, row_count)
+        for i in range(max_n):
+            row = rows.nth(i)
+            ok = click_row_checkbox(row)
+            if not ok:
+                print(f"第 {i + 1} 行未找到可点击的勾选 svg。")
+        print(f"已勾选前 {max_n} 行。")
+
+    def select_all_rows_on_page():
+        ok = click_first_visible(page.locator("thead svg"))
+        if ok:
+            print("已通过表头勾选全选当前页。")
+            return True
+
+        rows = page.locator("tbody tr")
+        row_count = rows.count()
+        for i in range(row_count):
+            click_row_checkbox(rows.nth(i))
+        print("已逐行勾选当前页全部行。")
+        return True
+
+    def click_next_page_icon():
+        return click_first_visible(page.locator("i.tic.tic-laydate-next-m"))
+
+    start_ms = to_ms(start_str)
+    if start_ms is None:
+        print(f"无法解析开始时间 start_str: {start_str}")
+        return False
+
+    data = wait_report_list(timeout_sec=30)
+    if not data:
+        print("未捕获到报告列表接口数据。")
+        return False
+
+    max_pages = 200
+    for _ in range(max_pages):
+        payload = data.get("data", {})
+        items = payload.get("items") or []
+        if not items:
+            print("报告列表为空。")
+            return True
+
+        page_num = safe_int(payload.get("pageNum")) or 1
+        page_size = safe_int(payload.get("pageSize")) or max(len(items), 1)
+        total = safe_int(payload.get("total")) or 0
+
+        last_item = items[-1] if items else {}
+        last_pay_date = safe_int(last_item.get("payDate"))
+        if last_pay_date is None:
+            print("无法读取最后一条数据的 payDate。")
+            return False
+
+        if last_pay_date <= start_ms:
+            # 如果最后一条 payDate 早于 start_str，说明第一页已经包含 start_str 之后的全部数据。
+            select_count = 0
+            for item in items:
+                pay_date = safe_int(item.get("payDate"))
+                if pay_date is None:
+                    continue
+                if pay_date > start_ms:
+                    select_count += 1
+                else:
+                    break
+            select_first_n_rows(select_count)
+            return True
+
+        select_all_rows_on_page()
+
+        has_next = (page_num * page_size) < total
+        if not has_next:
+            print("已到最后一页。")
+            return True
+
+        ok = click_next_page_icon()
+        if not ok:
+            print("未找到可点击的下一页按钮。")
+            return False
+
+        data = wait_report_list(expected_page_num=page_num + 1, timeout_sec=30)
+        if not data:
+            print("翻页后未捕获到新的报告列表接口数据。")
+            return False
+        time.sleep(0.5)
+
+    print("翻页次数超出上限，停止勾选。")
+    return False
+
+
 def export_file(page):
     # start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
     start_str = "2026-01-09 18:40:04"
@@ -379,4 +544,5 @@ def export_file(page):
     report_url = "https://www.tianyancha.com/usercenter/report"
     page.goto(report_url)
     print(f"已跳转到报告页面 {report_url}")
+    select_report(page, start_str)
     input()
