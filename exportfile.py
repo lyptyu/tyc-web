@@ -689,6 +689,16 @@ def select_report(page, start_str):
     return True
 
 
+def batch_download(page):
+    btn = page.locator(
+        "button._50ab4._52bf6._9e3b9:has(span:has-text('批量下载'))"
+    ).first
+    btn.wait_for(state="attached", timeout=20000)
+    btn.evaluate("el => el.click()")
+    print("已点击批量下载")
+    return True
+
+
 def export_file(page):
     # start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
     start_str = "2026-01-09 18:40:04"
@@ -708,4 +718,5 @@ def export_file(page):
     page.goto(report_url)
     print(f"已跳转到报告页面 {report_url}")
     select_report(page, start_str)
+    batch_download(page)
     input()
