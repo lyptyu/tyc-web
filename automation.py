@@ -194,8 +194,6 @@ class WebAutomation:
 
         time.sleep(2)
         export_file(page)
-        # 点击“基础工商信息导出”的父级 button
-
         return
         parent_btn_selector = self.config.get("export_parent_button_selector")
         if parent_btn_selector:
