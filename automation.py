@@ -4,12 +4,14 @@ import time
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright, TimeoutError
 
+from exportfile import export_file
+
 
 class WebAutomation:
     def __init__(self, config_path_or_dict=None, logger=None):
         self.logger = logger
         if not config_path_or_dict:
-            config_path_or_dict = r"D:\SourceCode\AiFaProject\spider\amac_sync_project\webframe\config.json"
+            config_path_or_dict = r"web_config.json"
         if isinstance(config_path_or_dict, str):
             self.config = self.load_config(config_path_or_dict)
         else:
@@ -145,12 +147,12 @@ class WebAutomation:
                 raise e
 
             # 3. Download Process
-            try:
-                downloaded_file_path = self._process_download(page)
-            except Exception as e:
-                self.log(f"Error during download process: {e}")
-                browser.close()
-                raise e
+            # try:
+            #     downloaded_file_path = self._process_download(page)
+            # except Exception as e:
+            #     self.log(f"Error during download process: {e}")
+            #     browser.close()
+            #     raise e
 
             browser.close()
 
@@ -191,7 +193,11 @@ class WebAutomation:
         page.set_input_files(import_input_selector, self.import_file)
 
         time.sleep(2)
+        export_file()
+        input("Press Enter to continue...")
         # 点击“基础工商信息导出”的父级 button
+
+        return
         parent_btn_selector = self.config.get("export_parent_button_selector")
         if parent_btn_selector:
             self.log(f"Waiting for button: {parent_btn_selector}")
