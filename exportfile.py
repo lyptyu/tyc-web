@@ -227,11 +227,35 @@ def basic_export_flow(page):
     perform_export(page, total_count)
 
 
+def click_more_dimensions_export_button(page):
+    """
+    点击“更多维度导出”按钮。
+    """
+    btn_selector = "//span[contains(@class, '_c7f86') and contains(@class, '_63015') and contains(text(), '更多维度导出')]"
+    btn = page.locator(btn_selector)
+    btn.wait_for(state="visible")
+    btn.click()
+    print("已点击“更多维度导出”按钮。")
+
+
+def shareholder_export_flow(page):
+    """
+    Step 1: 点击“更多维度导出”按钮：span元素，class包含“_c7f86 _63015”，text包含“更多维度导出”
+    Step 2: 待定
+    Step 3: 待定
+    Step 4: 待定
+    Step 5: 待定
+    """
+    click_more_dimensions_export_button(page)
+
+
 def export_file(page):
     # Step 1: 等待 batch/search/company/state 直到 matchState==2.
     wait_for_state_done(page)
     # (optional buffer) ensure server-side完成后再继续
     time.sleep(2)
     # 基础工商信息导出流程
-    basic_export_flow(page)
+    # basic_export_flow(page)
+	#股东信息导出流程
+    shareholder_export_flow(page)
     input()
