@@ -548,7 +548,7 @@ def select_report(page, start_str):
                 unready += 1
         return unready
 
-    def wait_until_page_ready(page_num, initial_data=None, timeout_sec=600):
+    def wait_until_page_ready(page_num, initial_data=None, timeout_sec=7200):
         if initial_data and page_all_ready(initial_data):
             return True
 
@@ -700,19 +700,22 @@ def batch_download(page):
 
 
 def export_file(page):
-    start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-    # start_str = "2026-01-09 18:40:04"
+    # start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    start_str = "2026-01-09 18:40:04"
     print(f"开始时间 {start_str}")
     # Step 1: 等待 batch/search/company/state 直到 matchState==2.
     wait_for_state_done(page)
     # (optional buffer) ensure server-side完成后再继续
     time.sleep(2)
     # 基础工商信息导出流程
-    basic_export_flow(page)
+    # basic_export_flow(page)
+    # time.sleep(2)
     # 股东信息导出流程
-    shareholder_export_flow(page)
+    # shareholder_export_flow(page)
+    # time.sleep(2)
     # 对外投资导出流程
-    external_investment_export_flow(page)
+    # external_investment_export_flow(page)
+    # time.sleep(2)
     # 导航至报告页面
     report_url = "https://www.tianyancha.com/usercenter/report"
     page.goto(report_url)
