@@ -212,6 +212,74 @@ def perform_export_custom_ranges(page, total_count):
         first_batch = False
 
 
+def open_more_dimensions_modal(page, target_text):
+    click_more_dimensions_export_button(page)
+    btn = page.locator(
+        "//button[contains(@class, '_50ab4') and contains(@class, '_58c27') and contains(@class, '_6c649')][.//span[contains(text(), $text)] ]"
+    ).filter(has_text=target_text)
+    btn.wait_for(state="visible")
+    btn.click()
+    print(f"已重新打开“更多维度导出”并进入“{target_text}”。")
+
+
+def perform_more_dimensions_export(page, total_count, open_modal_fn=None, batch_size=5000):
+    """
+    更多维度导出，默认每批 5000 条，超过则分批并可重开弹窗。
+    """
+    if total_count is None:
+        print("无法判断总条数，跳过导出。")
+        return
+
+    export_btn_selector = "//button[contains(@class, '_50ab4') and contains(@class, 'index_exportButton__9Jnq2') and contains(@class, '_52bf6')][.//span[contains(text(), '导出数据')]]"
+
+    def wait_export_success():
+        target = "batch/search/company/export/dim/check"
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            remaining_ms = max(1, int((deadline - time.time()) * 1000))
+            try:
+                resp = page.context.wait_for_event("response", timeout=remaining_ms)
+            except TimeoutError:
+                continue
+            if target in resp.url:
+                try:
+                    data = json.loads(resp.text())
+                    if data.get("state") == "ok" and data.get("data") is True:
+                        print("本批次股东导出请求成功。")
+                        return True
+                except Exception:
+                    pass
+        print("等待股东导出成功超时。")
+        return False
+
+    def submit_range(start, end):
+        inputs = page.locator("//input[contains(@class, '_90acb')]")
+        if inputs.count() < 2:
+            print("未找到自定义范围输入框。")
+            return False
+        inputs.nth(0).fill(str(start))
+        inputs.nth(1).fill(str(end))
+        btn = page.locator(export_btn_selector)
+        btn.wait_for(state="visible")
+        btn.click()
+        print(f"导出范围：{start}-{end}")
+        return wait_export_success()
+
+    start = 1
+    first_batch = True
+    while start <= total_count:
+        end = min(start + batch_size - 1, total_count)
+        if not first_batch:
+            if open_modal_fn:
+                open_modal_fn()
+        ok = submit_range(start, end)
+        if not ok:
+            print(f"导出范围 {start}-{end} 失败或超时，停止。")
+            break
+        start = end + 1
+        first_batch = False
+
+
 def basic_export_flow(page):
     """
     Step 1: 点击“基础工商信息导出”按钮
@@ -241,12 +309,56 @@ def click_more_dimensions_export_button(page):
 def shareholder_export_flow(page):
     """
     Step 1: 点击“更多维度导出”按钮：span元素，class包含“_c7f86 _63015”，text包含“更多维度导出”
-    Step 2: 待定
-    Step 3: 待定
-    Step 4: 待定
-    Step 5: 待定
+    Step 2: 点击“股东信息”按钮
+    Step 3: 获取总条数
+    Step 4: 按数量执行导出（含分批）
     """
     click_more_dimensions_export_button(page)
+    # Step 2: 点击“股东信息”按钮
+    shareholder_btn = page.locator("//button[contains(@class, '_50ab4') and contains(@class, '_58c27') and contains(@class, '_6c649')][.//span[contains(text(), '股东信息')]]")
+    shareholder_btn.wait_for(state="visible")
+    shareholder_btn.click()
+    print("已点击“股东信息”按钮。")
+    # Step 3: 获取总条数
+    total_count = read_export_count(page)
+    # Step 4: 按数量执行导出（含分批）
+    if total_count < 5000:
+        # 股东导出按钮
+        export_btn_selector = "//button[contains(@class, '_50ab4') and contains(@class, 'index_exportButton__9Jnq2') and contains(@class, '_52bf6')][.//span[contains(text(), '导出数据')]]"
+        btn = page.locator(export_btn_selector)
+        btn.wait_for(state="visible")
+        btn.click()
+        print("股东总条数 < 5000，已点击导出数据。")
+    else:
+        perform_more_dimensions_export(
+            page, total_count, open_modal_fn=lambda: open_more_dimensions_modal(page, "股东信息"), batch_size=5000
+        )
+
+
+def external_investment_export_flow(page):
+    """
+    对外投资导出流程：
+    Step 1: 点击“更多维度导出”
+    Step 2: 点击“对外投资”按钮
+    Step 3: 获取总条数
+    Step 4: 按数量执行导出（含分批，5000/批）
+    """
+    click_more_dimensions_export_button(page)
+    investment_btn = page.locator("//button[contains(@class, '_50ab4') and contains(@class, '_58c27') and contains(@class, '_6c649')][.//span[contains(text(), '对外投资')]]")
+    investment_btn.wait_for(state="visible")
+    investment_btn.click()
+    print("已点击“对外投资”按钮。")
+    total_count = read_export_count(page)
+    if total_count < 5000:
+        export_btn_selector = "//button[contains(@class, '_50ab4') and contains(@class, 'index_exportButton__9Jnq2') and contains(@class, '_52bf6')][.//span[contains(text(), '导出数据')]]"
+        btn = page.locator(export_btn_selector)
+        btn.wait_for(state="visible")
+        btn.click()
+        print("对外投资总条数 < 5000，已点击导出数据。")
+    else:
+        perform_more_dimensions_export(
+            page, total_count, open_modal_fn=lambda: open_more_dimensions_modal(page, "对外投资"), batch_size=5000
+        )
 
 
 def export_file(page):
@@ -256,6 +368,8 @@ def export_file(page):
     time.sleep(2)
     # 基础工商信息导出流程
     # basic_export_flow(page)
-	#股东信息导出流程
-    shareholder_export_flow(page)
+    # 股东信息导出流程
+    # shareholder_export_flow(page)
+    # 对外投资导出流程
+    # external_investment_export_flow(page)
     input()
