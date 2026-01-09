@@ -119,21 +119,119 @@ def read_export_count(page):
     try:
         value = int(digits)
         print(f"导出数量: {value}")
+        return value
     except ValueError:
         print(f"无法解析导出数量，原始值: {raw_text}")
+        return None
+
+
+def perform_export(page, total_count):
+    """
+    Step 6: 根据数量选择导出方式。
+    - 少于 1 万：点击 class="_f64c8 tyc-btn-v2 _53199 _c26a6 _d025c" 的按钮。
+    - 大于等于 1 万：使用“自定义范围”分批导出，每批最多 10000。
+    """
+    if total_count is None:
+        print("无法判断总条数，跳过导出点击。")
+        return
+
+    if total_count < 10000:
+        btn_selector = "//button[contains(@class, '_f64c8') and contains(@class, 'tyc-btn-v2') and contains(@class, '_53199') and contains(@class, '_c26a6') and contains(@class, '_d025c')]"
+        btn = page.locator(btn_selector)
+        btn.wait_for(state="visible")
+        btn.click()
+        print("总条数 < 10000，已点击直接导出按钮。")
+    else:
+        perform_export_custom_ranges(page, total_count)
+
+
+def perform_export_custom_ranges(page, total_count):
+    """
+    大于等于 1 万时，使用自定义范围分批导出。
+    每批最多导出 10000 条，逐批触发 exportAndFields 接口成功后继续。
+    """
+    def open_custom_range():
+        # 重新打开弹窗
+        click_export_button(page)
+        wait_export_modal(page)
+        ensure_select_all_fields(page)
+        # 进入自定义范围
+        span_selector = "//span[contains(@class, '_576dc') and contains(text(), '自定义范围：')]"
+        span = page.locator(span_selector)
+        span.wait_for(state="visible")
+        span.click()
+        print("已打开弹窗并进入自定义范围。")
+
+    def wait_export_success():
+        target = "batch/search/company/exportAndFields"
+        deadline = time.time() + 60  # up to 60s per批
+        while time.time() < deadline:
+            remaining_ms = max(1, int((deadline - time.time()) * 1000))
+            try:
+                resp = page.context.wait_for_event("response", timeout=remaining_ms)
+            except TimeoutError:
+                continue
+            if target in resp.url:
+                try:
+                    data = json.loads(resp.text())
+                    if data.get("state") == "ok" and data.get("data") == "success":
+                        print("本批次导出请求成功。")
+                        return True
+                except Exception:
+                    pass
+        print("等待 exportAndFields 成功超时。")
+        return False
+
+    def submit_range(start, end):
+        inputs = page.locator("//input[contains(@class, '_90acb')]")
+        if inputs.count() < 2:
+            print("未找到自定义范围输入框。")
+            return False
+        inputs.nth(0).fill(str(start))
+        inputs.nth(1).fill(str(end))
+        # 点击导出按钮
+        btn_selector = "//button[contains(@class, '_f64c8') and contains(@class, 'tyc-btn-v2') and contains(@class, '_53199') and contains(@class, '_c26a6') and contains(@class, '_d025c')]"
+        btn = page.locator(btn_selector)
+        btn.wait_for(state="visible")
+        btn.click()
+        print(f"已提交导出范围：{start}-{end}")
+        return wait_export_success()
+
+    start = 1
+    batch_size = 10000
+    first_batch = True  # 第一次使用已打开的弹窗，后续才重新打开
+    while start <= total_count:
+        end = min(start + batch_size - 1, total_count)
+        if not first_batch:
+            open_custom_range()
+        ok = submit_range(start, end)
+        if not ok:
+            print(f"范围 {start}-{end} 导出失败或超时，停止。")
+            break
+        start = end + 1
+        first_batch = False
+
+
+def basic_export_flow(page):
+    """
+    Step 1: 点击“基础工商信息导出”按钮
+    Step 2: 等待弹窗出现
+    Step 3: 全选导出字段
+    Step 4: 获取总条数
+    Step 5: 按数量执行导出（含分批）
+    """
+    click_export_button(page)
+    wait_export_modal(page)
+    ensure_select_all_fields(page)
+    total_count = read_export_count(page)
+    perform_export(page, total_count)
 
 
 def export_file(page):
-    # Step 1: wait for batch/search/company/state until matchState==2.
+    # Step 1: 等待 batch/search/company/state 直到 matchState==2.
     wait_for_state_done(page)
     # (optional buffer) ensure server-side完成后再继续
     time.sleep(2)
-    # Step 2: 点击“基础工商信息导出”按钮
-    click_export_button(page)
-    # Step 3: 等待“基础工商信息导出”弹窗出现
-    wait_export_modal(page)
-    # Step 4: 全选导出字段
-    ensure_select_all_fields(page)
-    # Step 5: 找到总条数： class="_b4a3e _ab8c7" 的 span 元素并输出值
-    read_export_count(page)
+    # 基础工商信息导出流程
+    basic_export_flow(page)
     input()
