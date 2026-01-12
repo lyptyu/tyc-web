@@ -621,6 +621,7 @@ def select_report(page, start_str, report_url=None):
 
     def wait_until_page_ready(page_num, initial_data=None, timeout_sec=7200):
         if initial_data and page_all_ready(initial_data):
+            print(f"第{page_num}页文档全部生成完毕。")
             return True
 
         if initial_data:
@@ -635,6 +636,7 @@ def select_report(page, start_str, report_url=None):
             if not data:
                 continue
             if page_all_ready(data):
+                print(f"第{page_num}页文档全部生成完毕。")
                 return True
             remaining = count_unready(data)
             if remaining > 0:
@@ -714,6 +716,8 @@ def select_report(page, start_str, report_url=None):
                 print("已到最后一页。")
                 selection_done = True
                 break
+
+            print(f"第{page_num}页处理完成，准备进入第{page_num + 1}页继续轮询。")
 
             ok = click_next_page_icon()
             if not ok:
