@@ -168,13 +168,16 @@ def perform_export_custom_ranges(page, total_count):
     大于等于 1 万时，使用自定义范围分批导出。
     每批最多导出 10000 条，逐批触发 exportAndFields 接口成功后继续。
     """
+
     def open_custom_range():
         # 重新打开弹窗
         click_export_button(page)
         wait_export_modal(page)
         ensure_select_all_fields(page)
         # 进入自定义范围
-        span_selector = "//span[contains(@class, '_576dc') and contains(text(), '自定义范围：')]"
+        span_selector = (
+            "//span[contains(@class, '_576dc') and contains(text(), '自定义范围：')]"
+        )
         span = page.locator(span_selector)
         span.wait_for(state="visible")
         span.click()
@@ -251,7 +254,9 @@ def open_more_dimensions_modal(page, target_text):
     print(f"已重新打开“更多维度导出”并进入“{target_text}”。")
 
 
-def perform_more_dimensions_export(page, total_count, open_modal_fn=None, batch_size=5000):
+def perform_more_dimensions_export(
+    page, total_count, open_modal_fn=None, batch_size=5000
+):
     """
     更多维度导出，默认每批 5000 条，超过则分批并可重开弹窗。
     """
@@ -354,7 +359,9 @@ def shareholder_export_flow(page):
     """
     click_more_dimensions_export_button(page)
     # Step 2: 点击“股东信息”按钮
-    shareholder_btn = page.locator("//button[contains(@class, '_50ab4') and contains(@class, '_58c27') and contains(@class, '_6c649')][.//span[contains(text(), '股东信息')]]")
+    shareholder_btn = page.locator(
+        "//button[contains(@class, '_50ab4') and contains(@class, '_58c27') and contains(@class, '_6c649')][.//span[contains(text(), '股东信息')]]"
+    )
     shareholder_btn.wait_for(state="visible")
     shareholder_btn.click()
     print("已点击“股东信息”按钮。")
@@ -370,7 +377,10 @@ def shareholder_export_flow(page):
         print("股东总条数 < 5000，已点击导出数据。")
     else:
         perform_more_dimensions_export(
-            page, total_count, open_modal_fn=lambda: open_more_dimensions_modal(page, "股东信息"), batch_size=5000
+            page,
+            total_count,
+            open_modal_fn=lambda: open_more_dimensions_modal(page, "股东信息"),
+            batch_size=5000,
         )
 
 
@@ -383,7 +393,9 @@ def external_investment_export_flow(page):
     Step 4: 按数量执行导出（含分批，5000/批）
     """
     click_more_dimensions_export_button(page)
-    investment_btn = page.locator("//button[contains(@class, '_50ab4') and contains(@class, '_58c27') and contains(@class, '_6c649')][.//span[contains(text(), '对外投资')]]")
+    investment_btn = page.locator(
+        "//button[contains(@class, '_50ab4') and contains(@class, '_58c27') and contains(@class, '_6c649')][.//span[contains(text(), '对外投资')]]"
+    )
     investment_btn.wait_for(state="visible")
     investment_btn.click()
     print("已点击“对外投资”按钮。")
@@ -396,7 +408,10 @@ def external_investment_export_flow(page):
         print("对外投资总条数 < 5000，已点击导出数据。")
     else:
         perform_more_dimensions_export(
-            page, total_count, open_modal_fn=lambda: open_more_dimensions_modal(page, "对外投资"), batch_size=5000
+            page,
+            total_count,
+            open_modal_fn=lambda: open_more_dimensions_modal(page, "对外投资"),
+            batch_size=5000,
         )
 
 
@@ -564,10 +579,14 @@ def select_report(page, start_str, report_url=None):
 
         ok = click_page_num(target_page_num)
         if ok:
-            data = wait_report_list(expected_page_num=target_page_num, timeout_sec=timeout_sec)
+            data = wait_report_list(
+                expected_page_num=target_page_num, timeout_sec=timeout_sec
+            )
             if not data:
                 time.sleep(0.5)
-                data = wait_report_list(expected_page_num=target_page_num, timeout_sec=timeout_sec)
+                data = wait_report_list(
+                    expected_page_num=target_page_num, timeout_sec=timeout_sec
+                )
             if not data:
                 return current_page_num, False, None
             return target_page_num, True, data
@@ -576,7 +595,9 @@ def select_report(page, start_str, report_url=None):
         if target_page_num > current_page_num:
             ok_next = click_next_page_icon()
             if ok_next:
-                data = wait_report_list(expected_page_num=current_page_num + 1, timeout_sec=timeout_sec)
+                data = wait_report_list(
+                    expected_page_num=current_page_num + 1, timeout_sec=timeout_sec
+                )
                 if data:
                     return current_page_num + 1, True, data
             # 若兜底仍失败，继续按原逻辑逐页尝试
@@ -587,7 +608,9 @@ def select_report(page, start_str, report_url=None):
                 ok = click_next_page_icon()
                 if not ok:
                     return current_page_num, False, None
-                data = wait_report_list(expected_page_num=current_page_num + 1, timeout_sec=timeout_sec)
+                data = wait_report_list(
+                    expected_page_num=current_page_num + 1, timeout_sec=timeout_sec
+                )
                 if not data:
                     return current_page_num, False, None
                 current_page_num += 1
@@ -599,7 +622,9 @@ def select_report(page, start_str, report_url=None):
                 ok = click_prev_page_icon()
                 if not ok:
                     return current_page_num, False, None
-                data = wait_report_list(expected_page_num=current_page_num - 1, timeout_sec=timeout_sec)
+                data = wait_report_list(
+                    expected_page_num=current_page_num - 1, timeout_sec=timeout_sec
+                )
                 if not data:
                     return current_page_num, False, None
                 current_page_num -= 1
@@ -636,12 +661,16 @@ def select_report(page, start_str, report_url=None):
         if initial_data:
             remaining = count_unready(initial_data)
             if remaining > 0:
-                print(f"第{page_num}页还剩{remaining}个文档未生成完毕，接口轮询中，请稍后")
+                print(
+                    f"第{page_num}页还剩{remaining}个文档未生成完毕，接口轮询中，请稍后"
+                )
 
         deadline = time.time() + timeout_sec
         while time.time() < deadline:
             remaining = max(1, int(deadline - time.time()))
-            data = wait_report_list(expected_page_num=page_num, timeout_sec=min(900, remaining))
+            data = wait_report_list(
+                expected_page_num=page_num, timeout_sec=min(900, remaining)
+            )
             if not data:
                 continue
             if page_all_ready(data):
@@ -649,7 +678,9 @@ def select_report(page, start_str, report_url=None):
                 return True
             remaining = count_unready(data)
             if remaining > 0:
-                print(f"第{page_num}页还剩{remaining}个文档未生成完毕，接口轮询中，请稍后")
+                print(
+                    f"第{page_num}页还剩{remaining}个文档未生成完毕，接口轮询中，请稍后"
+                )
         return False
 
     try:
@@ -763,7 +794,9 @@ def select_report(page, start_str, report_url=None):
             if data:
                 page_list_data[p] = data
 
-            ok_ready = wait_until_page_ready(p, initial_data=data or page_list_data.get(p))
+            ok_ready = wait_until_page_ready(
+                p, initial_data=data or page_list_data.get(p)
+            )
             if not ok_ready:
                 print(f"等待第 {p} 页 reportStatus 全部为 2 超时。")
                 return False
@@ -801,7 +834,7 @@ def batch_download(page):
 
 
 def export_file(page):
-    start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    start_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(f"开始时间 {start_str}")
     # Step 1: 等待 batch/search/company/state 直到 matchState==2.
     wait_for_state_done(page)
@@ -813,6 +846,7 @@ def export_file(page):
     # 股东信息导出流程
     shareholder_export_flow(page)
     time.sleep(1)
+
     # 对外投资导出流程
     external_investment_export_flow(page)
     time.sleep(1)
