@@ -572,6 +572,15 @@ def select_report(page, start_str, report_url=None):
                 return current_page_num, False, None
             return target_page_num, True, data
 
+        # 兜底：如果目标页大于当前页，直接点“下一步”尝试前进一页
+        if target_page_num > current_page_num:
+            ok_next = click_next_page_icon()
+            if ok_next:
+                data = wait_report_list(expected_page_num=current_page_num + 1, timeout_sec=timeout_sec)
+                if data:
+                    return current_page_num + 1, True, data
+            # 若兜底仍失败，继续按原逻辑逐页尝试
+
         if target_page_num > current_page_num:
             data = None
             while current_page_num < target_page_num:
@@ -724,7 +733,7 @@ def select_report(page, start_str, report_url=None):
                 print("未找到可点击的下一页按钮。")
                 return False
 
-            data = wait_report_list(expected_page_num=page_num + 1, timeout_sec=900)
+            data = wait_report_list(expected_page_num=page_num + 1, timeout_sec=30)
             if not data:
                 print("翻页后未捕获到新的报告列表接口数据。")
                 return False
@@ -806,8 +815,21 @@ def export_file(page):
     # 对外投资导出流程
     external_investment_export_flow(page)
     time.sleep(1)
-    # 导航至报告页面
+    # 导航至报告页面，并带最多 3 次重试（失败则刷新重试）
     report_url = "https://www.tianyancha.com/usercenter/report"
-    select_report(page, start_str, report_url=report_url)
+    ok = False
+    for attempt in range(3):
+        ok = select_report(page, start_str, report_url=report_url)
+        if ok:
+            break
+        print(f"select_report 失败，第 {attempt + 1} 次尝试后刷新重试...")
+        try:
+            page.reload(wait_until="domcontentloaded")
+        except Exception:
+            pass
+    if not ok:
+        print("select_report 重试 3 次仍失败，终止导出流程。")
+        return False
+
     batch_download(page)
     input()
