@@ -726,8 +726,6 @@ def select_report(page, start_str, report_url=None):
                 selection_done = True
                 break
 
-            print(f"第{page_num}页处理完成，准备进入第{page_num + 1}页继续轮询。")
-
             ok = click_next_page_icon()
             if not ok:
                 print("未找到可点击的下一页按钮。")
@@ -777,6 +775,10 @@ def select_report(page, start_str, report_url=None):
             page.off("response", _on_resp)
         except Exception:
             pass
+        try:
+            page.context.off("response", _on_resp)
+        except Exception:
+            pass
 
 
 def batch_download(page):
@@ -799,19 +801,18 @@ def batch_download(page):
 
 
 def export_file(page):
-    # start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-    start_str = "2026-01-09 18:40:04"
+    start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
     print(f"开始时间 {start_str}")
     # Step 1: 等待 batch/search/company/state 直到 matchState==2.
-    # wait_for_state_done(page)
+    wait_for_state_done(page)
     # (optional buffer) ensure server-side完成后再继续
-    # time.sleep(2)
+    time.sleep(1)
     # 基础工商信息导出流程
     basic_export_flow(page)
-    # time.sleep(2)
+    time.sleep(1)
     # 股东信息导出流程
     shareholder_export_flow(page)
-    # time.sleep(2)
+    time.sleep(1)
     # 对外投资导出流程
     external_investment_export_flow(page)
     time.sleep(1)
