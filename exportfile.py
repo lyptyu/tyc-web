@@ -724,7 +724,7 @@ def select_report(page, start_str, report_url=None):
                 print("未找到可点击的下一页按钮。")
                 return False
 
-            data = wait_report_list(expected_page_num=page_num + 1, timeout_sec=30)
+            data = wait_report_list(expected_page_num=page_num + 1, timeout_sec=900)
             if not data:
                 print("翻页后未捕获到新的报告列表接口数据。")
                 return False
