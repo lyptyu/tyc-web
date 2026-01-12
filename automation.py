@@ -158,16 +158,78 @@ class WebAutomation:
 
         return downloaded_file_path
 
+
+    def check_login(self, page, trigger=None):
+        """
+        Listen for the user info API and determine login status.
+        Succeeds when the response JSON has state == "ok",
+        otherwise logs failure and raises.
+        """
+        self.log("检查登录状态接口： next/web/getUserInfo...")
+        predicate = lambda r: "next/web/getUserInfo" in r.url
+
+        try:
+            with page.expect_response(predicate, timeout=10000) as resp_info:
+                if trigger:
+                    trigger()
+            response = resp_info.value
+        except TimeoutError:
+            self.log("用户登陆失败！请重新设置token")
+            raise
+
+        try:
+            data = response.json()
+        except Exception:
+            self.log("用户登陆失败！请重新设置token")
+            raise
+
+        if data.get("state") == "ok":
+            self.log("登录成功")
+            return True
+        raise Exception("登录失败: state is not ok")
+    def check_vip(self, page, trigger=None):
+        """
+        Listen for batch/search/import response and ensure state == 'ok'.
+        """
+        self.log("检查会员接口： batch/search/import ...")
+        predicate = lambda r: "batch/search/import" in r.url
+
+        try:
+            with page.expect_response(predicate, timeout=15000) as resp_info:
+                if trigger:
+                    trigger()
+            response = resp_info.value
+        except TimeoutError:
+            self.log("账号会员过期，请重试")
+            raise
+
+        try:
+            data = response.json()
+        except Exception:
+            self.log("账号会员过期，请重试")
+            raise
+
+        if data.get("state") == "ok":
+            self.log("会员检查通过")
+            return True
+
+        self.log("账号会员过期，请重试")
+        raise Exception("会员检查失败: state is not ok")
     def _process_import(self, page):
-        page.goto("https://www.tianyancha.com/")
-        time.sleep(1.5)
+        self.check_login(
+            page,
+            trigger=lambda: (
+                page.goto("https://www.tianyancha.com/"),
+                page.wait_for_timeout(1500),
+            ),
+        )
+        time.sleep(0.5)
         import_page_url = self.config.get("import_page_url")
         if not import_page_url:
             raise ValueError("Config missing 'import_page_url'")
-
+        
         self.log(f"Navigating to import page: {import_page_url}")
         page.goto(import_page_url)
-
         # # Prepare file to upload
         # import_folder = self.config.get("import_folder")
         # if not import_folder:
@@ -190,7 +252,10 @@ class WebAutomation:
             )
 
         self.log(f"Uploading file to input: {import_input_selector}")
-        page.set_input_files(import_input_selector, self.import_file)
+        self.check_vip(
+            page,
+            trigger=lambda: page.set_input_files(import_input_selector, self.import_file),
+        )
 
         time.sleep(2)
         export_file(page)
