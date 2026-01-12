@@ -1,6 +1,24 @@
 import json
+import os
 import time
 from playwright.sync_api import TimeoutError
+
+
+def _get_export_download_path():
+    """
+    读取 web_config.json 中的 export_download_path，若缺失则使用 ./downloads。
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "web_config.json")
+    default_path = os.path.join(os.getcwd(), "downloads")
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+            path = cfg.get("export_download_path") or default_path
+    except Exception:
+        path = default_path
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
+    return path
 
 
 def wait_for_state_done(page, timeout_sec=60):
@@ -255,9 +273,17 @@ def perform_more_dimensions_export(page, total_count, open_modal_fn=None, batch_
             if target in resp.url:
                 try:
                     data = json.loads(resp.text())
-                    if data.get("state") == "ok":
+                    state = data.get("state")
+                    if state == "ok":
                         print("本批次股东导出请求成功。")
                         return True
+                    if state == "warn":
+                        print("更多维度导出次数不够，刷新页面继续后续流程。")
+                        try:
+                            page.reload(wait_until="domcontentloaded")
+                        except Exception:
+                            pass
+                        return "warn"
                 except Exception:
                     pass
         print("等待股东导出成功超时。")
@@ -284,6 +310,8 @@ def perform_more_dimensions_export(page, total_count, open_modal_fn=None, batch_
             if open_modal_fn:
                 open_modal_fn()
         ok = submit_range(start, end)
+        if ok == "warn":
+            break
         if not ok:
             print(f"导出范围 {start}-{end} 失败或超时，停止。")
             break
@@ -519,7 +547,6 @@ def select_report(page, start_str, report_url=None):
         return False
 
     def click_page_num(page_num):
-        # 有些页面没有 pagination-wrap 容器，直接在 pageWrap 下找数字按钮
         xpath = (
             "//div[contains(@class,'pageWrap')]"
             f"//div[contains(@class,'num') and normalize-space(text())='{page_num}']"
@@ -740,13 +767,22 @@ def select_report(page, start_str, report_url=None):
 
 
 def batch_download(page):
-    btn = page.locator(
-        "button._50ab4._52bf6._9e3b9:has(span:has-text('批量下载'))"
-    ).first
-    btn.wait_for(state="attached", timeout=20000)
-    btn.evaluate("el => el.click()")
-    print("已点击批量下载")
-    return True
+    download_dir = _get_export_download_path()
+
+    with page.expect_download() as download_info:
+        btn = page.locator(
+            "button._50ab4._52bf6._9e3b9:has(span:has-text('批量下载'))"
+        ).first
+        btn.wait_for(state="attached", timeout=20000)
+        btn.evaluate("el => el.click()")
+        print("已点击批量下载")
+
+    download = download_info.value
+    filename = download.suggested_filename
+    save_path = os.path.join(download_dir, filename)
+    download.save_as(save_path)
+    print(f"文件已保存到: {save_path}")
+    return save_path
 
 
 def export_file(page):

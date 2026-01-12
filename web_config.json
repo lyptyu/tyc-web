@@ -11,6 +11,6 @@
   "download_page_url": "https://example.com/download",
   "latest_data_selector": "tr.latest-row input[type='checkbox']",
   "download_button_selector": "#download-link-id",
-  "export_download_path": "D:\\SourceCode\\AiFaProject\\aifaAiScript\\tycbatchprojectsyncsever\\import_csv_tyc",
+  "export_download_path": "C:\\Users\\Admin\\Desktop\\download",
   "headless": false
 }
