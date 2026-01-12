@@ -88,7 +88,7 @@ class WebAutomation:
                 cookies.append(cookie)
         return cookies
 
-    def run_task(self, import_file):
+    def run_task(self, import_file, cookie_string=None):
         """
         Executes the automation task:
         1. Login (using cookies)
@@ -109,8 +109,11 @@ class WebAutomation:
             )
             context = browser.new_context()
 
-            # 1. Load Cookies
-            cookies_config = self.config.get("login_cookies")
+            # 1. Load Cookies (cookie_string is required; no config fallback)
+            if not cookie_string:
+                browser.close()
+                raise ValueError("cookie_string is required for this run (no login_cookies fallback).")
+            cookies_config = cookie_string
             cookies_to_add = []
 
             if isinstance(cookies_config, str):
@@ -131,7 +134,7 @@ class WebAutomation:
 
             # 2. Import Process
             try:
-                self._process_import(page)
+                downloaded_file_path = self._process_import(page)
             except Exception as e:
                 self.log(f"Error during import process: {e}")
                 # Depending on requirements, we might want to stop here
@@ -184,6 +187,22 @@ class WebAutomation:
             raise
 
         if data.get("state") == "ok":
+            # 判断是否为 SVIP
+            is_svip = None
+            # 常见字段命名容错：isSvip / isSVip / isVip
+            payload = data.get("data", {}) if isinstance(data.get("data"), dict) else {}
+            for key in ("isSvip", "isSVip", "isVip"):
+                if key in payload:
+                    is_svip = payload.get(key)
+                    break
+
+            # 仅在明确标记为 false 时判定为非 SVIP
+            is_svip_str = is_svip.lower() if isinstance(is_svip, str) else None
+            if is_svip is False or is_svip_str == "false":
+                msg = "用户不是Svip,操作失败"
+                self.log(msg)
+                raise Exception(msg)
+
             self.log("登录成功")
             return True
         raise Exception("登录失败: state is not ok")
@@ -254,8 +273,10 @@ class WebAutomation:
         self.log(f"Uploading file to input: {import_input_selector}")
         page.set_input_files(import_input_selector, self.import_file)
         time.sleep(2)
-        export_file(page)
-        return
+        downloaded_file_path = export_file(page)
+        if not downloaded_file_path:
+            raise Exception("export_file failed")
+        return downloaded_file_path
         parent_btn_selector = self.config.get("export_parent_button_selector")
         if parent_btn_selector:
             self.log(f"Waiting for button: {parent_btn_selector}")

@@ -1,0 +1,43 @@
+1 cookie1.txt-file1.txt-失败
+Loaded 18 cookies.
+检查登录状态接口： next/web/getUserInfo...
+Error during import process: 登录失败: state is not ok
+Traceback (most recent call last):
+  File "C:\Users\Admin\Desktop\webframe\test_webcall.py", line 46, in run_sequential
+    downloaded_file_path = automation.run_task(
+                           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\Desktop\webframe\automation.py", line 150, in run_task
+    raise e
+  File "C:\Users\Admin\Desktop\webframe\automation.py", line 137, in run_task
+    downloaded_file_path = self._process_import(page)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\Desktop\webframe\automation.py", line 238, in _process_import
+    self.check_login(
+  File "C:\Users\Admin\Desktop\webframe\automation.py", line 208, in check_login
+    raise Exception("登录失败: state is not ok")
+Exception: 登录失败: state is not ok
+
+
+----------------------------------------------------------------------
+2 cookie2.txt-file2.txt-失败
+Loaded 18 cookies.
+检查登录状态接口： next/web/getUserInfo...
+用户不是Svip,操作失败
+Error during import process: 用户不是Svip,操作失败
+Traceback (most recent call last):
+  File "C:\Users\Admin\Desktop\webframe\test_webcall.py", line 46, in run_sequential
+    downloaded_file_path = automation.run_task(
+                           ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\Desktop\webframe\automation.py", line 150, in run_task
+    raise e
+  File "C:\Users\Admin\Desktop\webframe\automation.py", line 137, in run_task
+    downloaded_file_path = self._process_import(page)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\Desktop\webframe\automation.py", line 238, in _process_import
+    self.check_login(
+  File "C:\Users\Admin\Desktop\webframe\automation.py", line 204, in check_login
+    raise Exception(msg)
+Exception: 用户不是Svip,操作失败
+
+
+----------------------------------------------------------------------

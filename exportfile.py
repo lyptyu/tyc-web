@@ -866,5 +866,5 @@ def export_file(page):
         print("select_report 重试 3 次仍失败，终止导出流程。")
         return False
 
-    batch_download(page)
-    input()
+    save_path = batch_download(page)
+    return save_path
