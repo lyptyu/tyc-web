@@ -3,7 +3,7 @@ import time
 from playwright.sync_api import TimeoutError
 
 
-def wait_for_state_done(page, timeout_sec=20):
+def wait_for_state_done(page, timeout_sec=60):
     """
     等待 batch/search/company/state 响应，直到 matchState==2 即视为完成。
     返回 True 表示已检测到 matchState==2，否则 False。
@@ -361,8 +361,25 @@ def external_investment_export_flow(page):
         )
 
 
-def select_report(page, start_str):
-    target = "cloud-c-report/myReport/list"
+def select_report(page, start_str, report_url=None):
+    target = "myReport/list"
+    buffered = []
+
+    def _on_resp(resp):
+        if target not in resp.url:
+            return
+        try:
+            data = json.loads(resp.text())
+            buffered.append(data)
+        except Exception:
+            return
+
+    # 提前注册监听，避免跳转后错过首个接口
+    page.on("response", _on_resp)
+    page.context.on("response", _on_resp)
+    if report_url:
+        page.goto(report_url)
+        print(f"已跳转到报告页面 {report_url}")
 
     def to_ms(datetime_str):
         try:
@@ -379,7 +396,23 @@ def select_report(page, start_str):
 
     def wait_report_list(expected_page_num=None, timeout_sec=30):
         deadline = time.time() + timeout_sec
+
+        def pop_buffered():
+            if not buffered:
+                return None
+            # 按 FIFO 取出并消费，避免重复命中旧数据
+            data = buffered.pop(0)
+            page_num = data.get("data", {}).get("pageNum")
+            if expected_page_num is None or page_num == expected_page_num:
+                return data
+            # 未命中则继续找下一条
+            return pop_buffered()
+
         while time.time() < deadline:
+            buffered_hit = pop_buffered()
+            if buffered_hit:
+                return buffered_hit
+
             remaining_ms = max(1, int((deadline - time.time()) * 1000))
             try:
                 resp = page.context.wait_for_event("response", timeout=remaining_ms)
@@ -475,8 +508,8 @@ def select_report(page, start_str):
         return False
 
     def click_page_num(page_num):
+        # 有些页面没有 pagination-wrap 容器，直接在 pageWrap 下找数字按钮
         xpath = (
-            "//div[contains(@class,'pagination-wrap')]"
             "//div[contains(@class,'pageWrap')]"
             f"//div[contains(@class,'num') and normalize-space(text())='{page_num}']"
         )
@@ -484,7 +517,7 @@ def select_report(page, start_str):
         if click_first_visible(loc):
             return True
 
-        loc = page.locator("div.pagination-wrap div.pageWrap div.num").filter(has_text=str(page_num))
+        loc = page.locator("div.pageWrap div.num").filter(has_text=str(page_num))
         return click_first_visible(loc)
 
     def goto_page(target_page_num, current_page_num, timeout_sec=30):
@@ -570,123 +603,129 @@ def select_report(page, start_str):
                 print(f"第{page_num}页还剩{remaining}个文档未生成完毕，接口轮询中，请稍后")
         return False
 
-    start_ms = to_ms(start_str)
-    if start_ms is None:
-        print(f"无法解析开始时间 start_str: {start_str}")
-        return False
-
-    data = wait_report_list(timeout_sec=30)
-    if not data:
-        print("未捕获到报告列表接口数据。")
-        return False
-
-    initial_page_num = safe_int(data.get("data", {}).get("pageNum")) or 1
-    if initial_page_num != 1:
-        current_page_num = initial_page_num
-        current_page_num, ok, data2 = goto_page(1, current_page_num)
-        if not ok:
-            print("初始化跳转第一页失败。")
-            return False
-        if data2:
-            data = data2
-
-    page_list_data = {}
-    pending_pages = set()
-    current_page_num = None
-
-    max_pages = 200
-    selection_done = False
-    for _ in range(max_pages):
-        payload = data.get("data", {})
-        items = payload.get("items") or []
-        if not items:
-            print("报告列表为空。")
-            selection_done = True
-            break
-
-        page_num = safe_int(payload.get("pageNum")) or 1
-        current_page_num = page_num
-        page_list_data[page_num] = data
-
-        if any(safe_int(item.get("reportStatus")) == 1 for item in items):
-            pending_pages.add(page_num)
-
-        page_size = safe_int(payload.get("pageSize")) or max(len(items), 1)
-        total = safe_int(payload.get("total")) or 0
-
-        last_item = items[-1] if items else {}
-        last_pay_date = safe_int(last_item.get("payDate"))
-        if last_pay_date is None:
-            print("无法读取最后一条数据的 payDate。")
+    try:
+        start_ms = to_ms(start_str)
+        if start_ms is None:
+            print(f"无法解析开始时间 start_str: {start_str}")
             return False
 
-        if last_pay_date <= start_ms:
-            # 如果最后一条 payDate 早于 start_str，说明第一页已经包含 start_str 之后的全部数据。
-            select_count = 0
-            for item in items:
-                pay_date = safe_int(item.get("payDate"))
-                if pay_date is None:
-                    continue
-                if pay_date > start_ms:
-                    select_count += 1
-                else:
-                    break
-            select_first_n_rows(select_count)
-            selection_done = True
-            break
-
-        select_all_rows_on_page()
-
-        has_next = (page_num * page_size) < total
-        if not has_next:
-            print("已到最后一页。")
-            selection_done = True
-            break
-
-        ok = click_next_page_icon()
-        if not ok:
-            print("未找到可点击的下一页按钮。")
-            return False
-
-        data = wait_report_list(expected_page_num=page_num + 1, timeout_sec=30)
+        data = wait_report_list(timeout_sec=30)
         if not data:
-            print("翻页后未捕获到新的报告列表接口数据。")
+            print("未捕获到报告列表接口数据。")
             return False
-        time.sleep(0.5)
 
-    if not selection_done:
-        print("翻页次数超出上限，停止勾选。")
-        return False
+        initial_page_num = safe_int(data.get("data", {}).get("pageNum")) or 1
+        if initial_page_num != 1:
+            current_page_num = initial_page_num
+            current_page_num, ok, data2 = goto_page(1, current_page_num)
+            if not ok:
+                print("初始化跳转第一页失败。")
+                return False
+            if data2:
+                data = data2
 
-    if not pending_pages:
-        print("全部文档生成成功")
-        return True
+        page_list_data = {}
+        pending_pages = set()
+        current_page_num = None
 
-    if current_page_num is None:
-        current_page_num = 1
+        max_pages = 200
+        selection_done = False
+        for _ in range(max_pages):
+            payload = data.get("data", {})
+            items = payload.get("items") or []
+            if not items:
+                print("报告列表为空。")
+                selection_done = True
+                break
 
-    current_page_num, ok, data = goto_page(1, current_page_num)
-    if not ok:
-        print("跳转第一页失败。")
-        return False
-    if data:
-        page_list_data[1] = data
+            page_num = safe_int(payload.get("pageNum")) or 1
+            current_page_num = page_num
+            page_list_data[page_num] = data
 
-    for p in sorted(pending_pages):
-        current_page_num, ok, data = goto_page(p, current_page_num)
+            if any(safe_int(item.get("reportStatus")) == 1 for item in items):
+                pending_pages.add(page_num)
+
+            page_size = safe_int(payload.get("pageSize")) or max(len(items), 1)
+            total = safe_int(payload.get("total")) or 0
+
+            last_item = items[-1] if items else {}
+            last_pay_date = safe_int(last_item.get("payDate"))
+            if last_pay_date is None:
+                print("无法读取最后一条数据的 payDate。")
+                return False
+
+            if last_pay_date <= start_ms:
+                # 如果最后一条 payDate 早于 start_str，说明第一页已经包含 start_str 之后的全部数据。
+                select_count = 0
+                for item in items:
+                    pay_date = safe_int(item.get("payDate"))
+                    if pay_date is None:
+                        continue
+                    if pay_date > start_ms:
+                        select_count += 1
+                    else:
+                        break
+                select_first_n_rows(select_count)
+                selection_done = True
+                break
+
+            select_all_rows_on_page()
+
+            has_next = (page_num * page_size) < total
+            if not has_next:
+                print("已到最后一页。")
+                selection_done = True
+                break
+
+            ok = click_next_page_icon()
+            if not ok:
+                print("未找到可点击的下一页按钮。")
+                return False
+
+            data = wait_report_list(expected_page_num=page_num + 1, timeout_sec=30)
+            if not data:
+                print("翻页后未捕获到新的报告列表接口数据。")
+                return False
+            time.sleep(0.5)
+
+        if not selection_done:
+            print("翻页次数超出上限，停止勾选。")
+            return False
+
+        if not pending_pages:
+            print("全部文档生成成功")
+            return True
+
+        if current_page_num is None:
+            current_page_num = 1
+
+        current_page_num, ok, data = goto_page(1, current_page_num)
         if not ok:
-            print(f"跳转到第 {p} 页失败。")
+            print("跳转第一页失败。")
             return False
         if data:
-            page_list_data[p] = data
+            page_list_data[1] = data
 
-        ok_ready = wait_until_page_ready(p, initial_data=data or page_list_data.get(p))
-        if not ok_ready:
-            print(f"等待第 {p} 页 reportStatus 全部为 2 超时。")
-            return False
+        for p in sorted(pending_pages):
+            current_page_num, ok, data = goto_page(p, current_page_num)
+            if not ok:
+                print(f"跳转到第 {p} 页失败。")
+                return False
+            if data:
+                page_list_data[p] = data
 
-    print("全部文档生成成功")
-    return True
+            ok_ready = wait_until_page_ready(p, initial_data=data or page_list_data.get(p))
+            if not ok_ready:
+                print(f"等待第 {p} 页 reportStatus 全部为 2 超时。")
+                return False
+
+        print("全部文档生成成功")
+        return True
+    finally:
+        try:
+            page.off("response", _on_resp)
+        except Exception:
+            pass
 
 
 def batch_download(page):
@@ -700,26 +739,24 @@ def batch_download(page):
 
 
 def export_file(page):
-    start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-    # start_str = "2026-01-09 18:40:04"
+    # start_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    start_str = "2026-01-09 18:40:04"
     print(f"开始时间 {start_str}")
     # Step 1: 等待 batch/search/company/state 直到 matchState==2.
-    wait_for_state_done(page)
+    # wait_for_state_done(page)
     # (optional buffer) ensure server-side完成后再继续
-    time.sleep(2)
+    # time.sleep(2)
     # 基础工商信息导出流程
-    basic_export_flow(page)
-    time.sleep(2)
+    # basic_export_flow(page)
+    # time.sleep(2)
     # 股东信息导出流程
-    shareholder_export_flow(page)
-    time.sleep(2)
+    # shareholder_export_flow(page)
+    # time.sleep(2)
     # 对外投资导出流程
-    external_investment_export_flow(page)
-    time.sleep(2)
+    # external_investment_export_flow(page)
+    time.sleep(1)
     # 导航至报告页面
     report_url = "https://www.tianyancha.com/usercenter/report"
-    page.goto(report_url)
-    print(f"已跳转到报告页面 {report_url}")
-    select_report(page, start_str)
+    select_report(page, start_str, report_url=report_url)
     batch_download(page)
     input()

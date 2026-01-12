@@ -252,11 +252,7 @@ class WebAutomation:
             )
 
         self.log(f"Uploading file to input: {import_input_selector}")
-        self.check_vip(
-            page,
-            trigger=lambda: page.set_input_files(import_input_selector, self.import_file),
-        )
-
+        page.set_input_files(import_input_selector, self.import_file)
         time.sleep(2)
         export_file(page)
         return
