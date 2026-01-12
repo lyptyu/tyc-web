@@ -632,7 +632,7 @@ def select_report(page, start_str, report_url=None):
         deadline = time.time() + timeout_sec
         while time.time() < deadline:
             remaining = max(1, int(deadline - time.time()))
-            data = wait_report_list(expected_page_num=page_num, timeout_sec=min(300, remaining))
+            data = wait_report_list(expected_page_num=page_num, timeout_sec=min(900, remaining))
             if not data:
                 continue
             if page_all_ready(data):
