@@ -174,9 +174,17 @@ def perform_export_custom_ranges(page, total_count):
             if target in resp.url:
                 try:
                     data = json.loads(resp.text())
-                    if data.get("state") == "ok" and data.get("data") == "success":
+                    state = data.get("state")
+                    if state == "ok" and data.get("data") == "success":
                         print("本批次导出请求成功。")
                         return True
+                    if state == "warn":
+                        print("基本信息导出没次数了，刷新页面继续后续流程。")
+                        try:
+                            page.reload(wait_until="domcontentloaded")
+                        except Exception:
+                            pass
+                        return "warn"
                 except Exception:
                     pass
         print("等待 exportAndFields 成功超时。")
@@ -205,6 +213,9 @@ def perform_export_custom_ranges(page, total_count):
         if not first_batch:
             open_custom_range()
         ok = submit_range(start, end)
+        if ok == "warn":
+            # 刷新后终止本次自定义导出循环，但不终止整个程序
+            break
         if not ok:
             print(f"范围 {start}-{end} 导出失败或超时，停止。")
             break
@@ -233,7 +244,7 @@ def perform_more_dimensions_export(page, total_count, open_modal_fn=None, batch_
     export_btn_selector = "//button[contains(@class, '_50ab4') and contains(@class, 'index_exportButton__9Jnq2') and contains(@class, '_52bf6')][.//span[contains(text(), '导出数据')]]"
 
     def wait_export_success():
-        target = "batch/search/company/export/dim/check"
+        target = "batch/search/company/export/dim"
         deadline = time.time() + 60
         while time.time() < deadline:
             remaining_ms = max(1, int((deadline - time.time()) * 1000))
@@ -244,7 +255,7 @@ def perform_more_dimensions_export(page, total_count, open_modal_fn=None, batch_
             if target in resp.url:
                 try:
                     data = json.loads(resp.text())
-                    if data.get("state") == "ok" and data.get("data") is True:
+                    if data.get("state") == "ok":
                         print("本批次股东导出请求成功。")
                         return True
                 except Exception:
@@ -750,10 +761,10 @@ def export_file(page):
     basic_export_flow(page)
     # time.sleep(2)
     # 股东信息导出流程
-    # shareholder_export_flow(page)
+    shareholder_export_flow(page)
     # time.sleep(2)
     # 对外投资导出流程
-    # external_investment_export_flow(page)
+    external_investment_export_flow(page)
     time.sleep(1)
     # 导航至报告页面
     report_url = "https://www.tianyancha.com/usercenter/report"
