@@ -747,7 +747,7 @@ def export_file(page):
     # (optional buffer) ensure server-side完成后再继续
     # time.sleep(2)
     # 基础工商信息导出流程
-    # basic_export_flow(page)
+    basic_export_flow(page)
     # time.sleep(2)
     # 股东信息导出流程
     # shareholder_export_flow(page)
